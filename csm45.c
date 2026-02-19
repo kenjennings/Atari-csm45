@@ -325,9 +325,55 @@ int characterBitmaps(char   data[][9],
 
 
 
+/* Iterate through the pixel rows of a character 
+ * block and count the number of times the '3' and 
+ * '4' pixels occur.
+ * If both are non-zero, report a warning. 
+ */
+ 
+int testConflict34(char   data[][9],
+					int    start,
+					int    end)
+{
+	int    loop   = start;
+	char * line   = NULL;
+	int    count3 = 0;
+	int    count4 = 0;
+
+//fprintf(stderr,"testConflict34(%d,%d)\n",start,end);
+	
+	while ( loop != end )
+	{
+		line = data[loop];
+//fprintf(stderr,"testConflict34() '%s'\n",line);
+		if ( strchr(line, '3' ) )
+			count3++;
+		
+		if ( strchr(line, '4' ) )
+			count4++;
+//fprintf(stderr,"testConflict34() '3' = %d\n",(int)strchr(line, '3' ));
+//fprintf(stderr,"testConflict34() '4' = %d\n",(int)strchr(line, '4' ));
+
+		if ( start < end )
+			loop++;
+		else
+			loop--;
+	}
+
+	if ( count3 && count4 )
+		fprintf(stderr,
+				"Warning: Block %d (character %d) has '3' and '4'.\n", 
+				( start < end ) ? start : end,
+				( start < end ) ? start/8 : end/8 );
+
+	return ( count3 + count4 );
+}
+
+
+
 /* Calculate the next character section boundary */
 
-int calcSection( int loop,
+int calcSection( int sectionStart,
 				 int  start,
 				 int  end )
 {
@@ -337,13 +383,13 @@ int calcSection( int loop,
 
 	if (start < end )
 	{
-		sectionEnd = loop + 8;
+		sectionEnd = sectionStart + 8;
 		if (sectionEnd > end)
 			sectionEnd = end;
 	}
 	else
 	{
-		sectionEnd = loop - 8;
+		sectionEnd = sectionStart - 8;
 		if (sectionEnd < end)
 			sectionEnd = end;
 	}
@@ -367,10 +413,13 @@ int dumpLines( char data[][9],
 	int    sectionEnd   = 0;
 	char * line         = NULL;
 
+
 	sectionEnd = calcSection( loop, start, end );
 
 	while (loop != end )
 	{
+		testConflict34( data, sectionStart, sectionEnd);
+
 		/* First Section... Picture of coded pixels and bits in comments. */
 		
 		fprintf(stdout,"\n; 0 1 2 3   BITS\n"); 	/* Comment Title */
@@ -399,7 +448,7 @@ int dumpLines( char data[][9],
 
 		sectionStart = loop;
 
-		sectionEnd = calcSection( loop, start, end );
+		sectionEnd = calcSection( sectionStart, start, end );
 	}
 
 	return 0;
@@ -411,7 +460,7 @@ int dumpLines( char data[][9],
 int main( int argc, char ** argv )
 {
 	char line[257];     /* The stdio input buffer. Please don't break me */
-	char spr[1024][9];  /* Please don't break me either */
+	char data[1024][9];  /* Please don't break me either */
 	int  numLines = 0 ; /* Number of lines of data read from file.*/
 	int  len      = 0 ; /* length of the current line being read.*/
 	char * c;
@@ -433,12 +482,17 @@ int main( int argc, char ** argv )
 
 		*c = '\0';                    /* Force end of string here. */
 
+		if ( !strlen(line) ) /* no data to process. skip it */
+		{
+			fprintf(stderr, "No data read at line %d. Skipping...\n",numLines);
+			continue;
+		}
+
 		strncat(line, "....", 4); /* Force padding in line to at least length 4 */
 
-		if ( strlen(line) > 4 )       /* Is string length longer than 8, then force end of string */
-			line[8] = '\0';
+		line[4] = '\0'; /* force end of string */
 
-		strcpy( spr[numLines++], line ); /* Copy line to sprite data array. */ 
+		strcpy( data[numLines++], line ); /* Copy line to sprite data array. */ 
 	}
 
 	if ( !numLines )
@@ -447,13 +501,13 @@ int main( int argc, char ** argv )
 		exit(0);
 	}
 
-	dumpLines(spr,0,numLines,0); /* data, start, end++, left to right pixel order) */
+	dumpLines(data,0,numLines,0); /* data, start, end++, left to right pixel order) */
 
-//	dumpLines(spr,0,numLines,1); /* data, start, end++, right to left pixel order) */
+//	dumpLines(data,0,numLines,1); /* data, start, end++, right to left pixel order) */
 
-//	dumpLines(spr,numLines-1,-1,0); /* data, start, end--, left to right pixel order) */
+//	dumpLines(data,numLines-1,-1,0); /* data, start, end--, left to right pixel order) */
 
-//	dumpLines(spr,numLines-1,-1,1); /* data, start, end--, right to left pixel order) */
+//	dumpLines(data,numLines-1,-1,1); /* data, start, end--, right to left pixel order) */
 
 	return 0;
 }
