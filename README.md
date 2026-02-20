@@ -91,8 +91,8 @@ Yet more bastardization introduced to the sprflip utility, this time accepting p
 The block of comments and data described above will be output for each orientation. 
 Use command line option -d to choose output.
 
--d n == Normal output.
--d h == Horizontally mirrored.
--d v == vertically mirrored.
+* -d n == Normal output.
+* -d h == Horizontally mirrored.
+* -d v == vertically mirrored.
 
 ---
