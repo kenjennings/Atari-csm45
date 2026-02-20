@@ -18,18 +18,27 @@
  * - (4) for COLPF3 (COLPF2 inverse)
  *
  * At this time character data is only 4 pixels per line.
+ *
  * Any pixel value other than the characters described
- * will be discarded.
+ * will be discarded including all leading, trailing, and 
+ * embedded blank spaces.
+ *
  * More than 4 usable bytes will be discarded.
  *
- * Up to 1024 lines of data may be provided.
- * Groups of 8 lines will be separated into a new comment block 
- * and data output section.
- * The program will ignore further data.
+ * An empty line will be ignored, resulting in a warning. Empty could 
+ * mean only an end of line character, or that there are no usable 
+ * pixels after stripping all invalid characters).
  *
  * A short line of data will be padded with zeros to the right.
  *
- * An outright empty line (no convertible characters) will be ignored.
+ * A line beginning with # will be treated as a comment in the 
+ * data and ignored without warning.  It MUST begin with #.  
+ * The same # character in any other position will be treated as data.
+ *
+ * Up to 1024 lines of data may be provided. (full character set.)
+ *
+ * Groups of 8 lines will be separated into a new character 
+ * with a comment block and data output section.
  *
  * If both '3' and '4' are in the same character a warning 
  * will be displayed, but output will convert both 
@@ -85,6 +94,7 @@
  * horizontally+vertically mirrored.
  */
 
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,7 +106,7 @@
  */
  
 int dumpCharDecimal(char * data,    /* String of pixels */
-					int    order,   /* Order to output pixels/bits (0)/left to right, (1)/Right to left */
+					int    h_order,   /* Order to output pixels/bits (0)/left to right, (1)/Right to left */
 					int    padme )  /* Comma padding after pixels value? 0/No, 1/Yes. */
 {
 	int loop     = 0;
@@ -122,13 +132,13 @@ int dumpCharDecimal(char * data,    /* String of pixels */
 	};
 
 
-	if (!data || (order < 0) || (order > 1) )
+	if (!data || (h_order < 0) || (h_order > 1) )
 	{
-		fprintf(stderr, "dumpCharDecimal() bad args\n");
+		fprintf(stderr, "csm45: dumpCharDecimal() bad args\n");
 		return -1;
 	}
 
-	if ( order )  /* If 1 then reverse order */
+	if ( h_order )  /* If 1 then reverse order */
 		data += 3 ; /* start at the end */
 
 	while ( loop < 4 )
@@ -145,7 +155,7 @@ int dumpCharDecimal(char * data,    /* String of pixels */
 			findbits++;
 		}
 
-		if ( order )
+		if ( h_order )
 			data--;
 		else
 			data++;
@@ -168,18 +178,18 @@ int dumpCharDecimal(char * data,    /* String of pixels */
  */
  
 int dumpCharBits(char * data,    /* String of pixels */
-			   int    order,   /* Order to output pixels/bits (0)/left to right, (1)/Right to left */
-			   int    padme )  /* Blank padding between pixels? 0/No, 1/Yes. */
+			     int    h_order,   /* Order to output pixels/bits (0)/left to right, (1)/Right to left */
+			     int    padme )  /* Blank padding between pixels? 0/No, 1/Yes. */
 {
 	int loop = 0;
 
-	if (!data || (order < 0) || (order > 1) )
+	if (!data || (h_order < 0) || (h_order > 1) )
 	{
-		fprintf(stderr, "dumpCharBits() bad args\n");
+		fprintf(stderr, "csm45: dumpCharBits() bad args\n");
 		return -1;
 	}
 
-	if ( order )  /* If 1 then reverse order */
+	if ( h_order )  /* If 1 then reverse order */
 		data += 3 ; /* start at the end */
 
 	while ( loop < 4 )
@@ -206,7 +216,7 @@ int dumpCharBits(char * data,    /* String of pixels */
 		if (padme)
 			fputc(' ',stdout);
 
-		if ( order )
+		if ( h_order )
 			data--;
 		else
 			data++;
@@ -224,13 +234,13 @@ int dumpCharBits(char * data,    /* String of pixels */
  */
  
 int commentLine(char * l,
-				int    order )
+				int    h_order )
 {
 	fprintf(stdout,"; ");
 
 	/* Output the text map */
 	
-	if ( !order ) /* Left to Right */
+	if ( !h_order ) /* Left to Right */
 		fprintf(stdout, "%c %c %c %c   ",
 				*(l),*(l+1),*(l+2),*(l+3) );
 	else
@@ -239,7 +249,7 @@ int commentLine(char * l,
 	
 	/*  Output the bits patterns -  '1' is padding between bits */
 
-	dumpCharBits(l, order, 1); 
+	dumpCharBits(l, h_order, 1); 
 	
 	fputc('\n', stdout);
 
@@ -247,13 +257,13 @@ int commentLine(char * l,
 }
 
 
-/* Dump the bytes in this group as decimals with copmmad between 
+/* Dump the bytes in this group as decimals with comma between 
 */
 
 int dumpBASIC(char data[][9], 
 			  int   start, 
 			  int   end, 
-			  int   order )
+			  int   h_order )
 {
 	int    loop = start;
 	char * line = NULL;
@@ -276,7 +286,7 @@ int dumpBASIC(char data[][9],
 				padme = 0;
 		}
 
-		dumpCharDecimal( line, order, padme );
+		dumpCharDecimal( line, h_order, padme );
 
 		if ( start < end )
 			loop++;
@@ -298,26 +308,27 @@ int dumpBASIC(char data[][9],
 int characterBitmaps(char   data[][9],
 					  int    start,
 					  int    end,
-					  int    order)
+					  int    h_order,
+					  int    v_order )
 {
-	int    loop = start;
-	char * line      = NULL;
+	int    loop    = start;
+	int    loopInc = 1;
+	char * line    = NULL;
 
-	
+	if ( v_order )
+		loopInc = -1;
+
 	while ( loop != end )
 	{
 		line = data[loop];
 
 		fprintf(stdout,"\t.by %%"); /* tab indent, and .by data type declaration and % for binary */
 
-		dumpCharBits(line, order, 0); /* NO padding between bits */
+		dumpCharBits(line, h_order, 0); /* NO padding between bits */
 
 		fputc('\n',stdout);
 		
-		if ( start < end )
-			loop++;
-		else
-			loop--;
+		loop += loopInc;
 	}
 	
 	return 0;
@@ -362,7 +373,7 @@ int testConflict34(char   data[][9],
 
 	if ( count3 && count4 )
 		fprintf(stderr,
-				"Warning: Block %d (character %d) has '3' and '4'.\n", 
+				"csm45: Warning: Block %d (character %d) has '3' and '4'.\n", 
 				( start < end ) ? start : end,
 				( start < end ) ? start/8 : end/8 );
 
@@ -371,52 +382,72 @@ int testConflict34(char   data[][9],
 
 
 
-/* Calculate the next character section boundary */
+/* Given the current start position determine the start/end of the 
+ * section according to the vertical order. 
+ */
 
-int calcSection( int sectionStart,
-				 int  start,
-				 int  end )
+int calcSection( int * sectionStart,
+				 int * sectionEnd,
+				 int   start,     /* aka where the loop is. */
+				 int   end,
+				 int   v_order ) /* (0) Top To Bottom  v  (1) Bottom To Top */
 {
-	int sectionEnd  = 0;
+	if (!sectionStart || !sectionEnd )
+		return -1;
 
-// fprintf(stderr,"calcSection(%d, %d, %d) entry\n",loop,start,end);
+// fprintf(stderr,"calcSection(enter) loop %d, end %d, v_order %d, secstart %d, secend %d\n",start,end,v_order, *sectionStart, *sectionEnd);
 
-	if (start < end )
+	if ( v_order )  /* (0) Top To Bottom  v  (1) Bottom To Top */
 	{
-		sectionEnd = sectionStart + 8;
-		if (sectionEnd > end)
-			sectionEnd = end;
+		*sectionEnd   = start - 1;
+		*sectionStart = start + 7;
+		if ( *sectionStart >= end )
+			*sectionStart = end - 1 ;
 	}
 	else
 	{
-		sectionEnd = sectionStart - 8;
-		if (sectionEnd < end)
-			sectionEnd = end;
+		*sectionStart = start;
+		*sectionEnd   = *sectionStart + 8;
+		if ( *sectionEnd > end )
+			 *sectionEnd = end;
 	}
 
-// fprintf(stderr,"calcSection(%d, %d, %d) exit sectionEnd=%d\n",loop,start,end,sectionEnd);
+// fprintf(stderr,"calcSection(exit) loop %d, end %d, v_order %d, secstart %d, secend %d\n",start,end,v_order, *sectionStart, *sectionEnd);
 
-	return( sectionEnd );
+	return( 0 );
 }
 
 
 
-/* Dump data lines in order from top to bottom */
+/* Dump data lines in order specified */
 
 int dumpLines( char data[][9],
 			   int  start,
 			   int  end,
-			   int  order ) /* (0) Left To Right  v  (1) Right To Left */
+			   int  h_order,  /* (0) Left To Right  v  (1) Right To Left */
+			   int  v_order ) /* (0) Top To Bottom  v  (1) Bottom To Top */
 {
-	int    loop        = start;
+	int    loop         = start;
 	int    sectionStart = start;
-	int    sectionEnd   = 0;
+	int    sectionEnd   = start+8;
+	int    sectionLoop  = sectionStart;
+	int    sectionInc          = 1;
 	char * line         = NULL;
 
 
-	sectionEnd = calcSection( loop, start, end );
+	if ( v_order )  /* (0) Top To Bottom  v  (1) Bottom To Top */
+		sectionInc = -1;
+	
+	if (sectionEnd > end)
+		sectionEnd = end;
+	
+	calcSection( &sectionStart, &sectionEnd, start, end, v_order);
+	sectionLoop = sectionStart;
 
-	while (loop != end )
+fprintf(stdout,"\n======== ======== csm45: Horizontal %s, Vertical %s ======== ========\n\n",
+		h_order ? "Flipped" : "Normal", v_order ? "Flipped" : "Normal");
+		
+	while (loop < end )
 	{
 		testConflict34( data, sectionStart, sectionEnd);
 
@@ -424,31 +455,30 @@ int dumpLines( char data[][9],
 		
 		fprintf(stdout,"\n; 0 1 2 3   BITS\n"); 	/* Comment Title */
 
-		while (loop != sectionEnd )
+		sectionLoop = sectionStart;
+
+ // fprintf(stderr, "looping... Main loop %d of %d -- section Start %d, end %d, inc %d\n",loop,end,sectionStart, sectionEnd, sectionInc);
+		while ( sectionLoop != sectionEnd )
 		{
-			line = data[loop];
+			line = data[sectionLoop];
 
-			commentLine(line,order);
+			commentLine(line,h_order);
 
-			if ( start < end )
-				loop++;
-			else
-				loop--;
+			loop++;                    /* Loop always moves forward to the next section */
+			sectionLoop += sectionInc; /* Move forward or backwards in the current 8-byte section. */
 		}
 
 		/* Next Section.  Character bits. */
 
-		fprintf(stdout,"\nCSET_%d\n",sectionStart/8);
+		fprintf(stdout, "\nCSET_%d\n", sectionStart/8);
 
-		characterBitmaps(data, sectionStart, sectionEnd, order);
+		characterBitmaps(data, sectionStart, sectionEnd, h_order, v_order);
 
 		fputc('\n',stdout);
 
-		dumpBASIC(data, sectionStart, sectionEnd, order);
+		dumpBASIC(data, sectionStart, sectionEnd, h_order);
 
-		sectionStart = loop;
-
-		sectionEnd = calcSection( sectionStart, start, end );
+		calcSection( &sectionStart, &sectionEnd, loop, end, v_order); /* Get next section start/end */
 	}
 
 	return 0;
@@ -465,10 +495,36 @@ int main( int argc, char ** argv )
 	int  len      = 0 ; /* length of the current line being read.*/
 	char * c;
 	char * s;
+	char * directs = NULL;
+	char * defdir = "n";
+	char   opt;
+
+
+	while ( (opt = getopt(argc, argv, "d:") ) != -1) 
+	{
+		switch (opt) 
+		{
+			case 'd':
+				directs = optarg;
+				break;
+				   
+			default: /* '?' */
+				fprintf(stderr, 
+					"Usage: %s [-d nhv]\n\nn = Normal (default)\nh = Horizontal flip\nv = Vertical flip\n\n",
+					argv[0] );
+				exit(EXIT_FAILURE);
+		}
+	}
+	
+	if ( ! directs )
+		directs = defdir;
 
 	while ( (c = (char *)fgets( line, 256, stdin ) ) && (numLines < 1024) )
 	{
 		line[256] = '\0';  /* Force end of string just in case.  I'm lazy. */
+
+		if ( line[0] == '#' ) /* Ignore commented line */
+			continue;
 
 		s = c;
 
@@ -484,11 +540,11 @@ int main( int argc, char ** argv )
 
 		if ( !strlen(line) ) /* no data to process. skip it */
 		{
-			fprintf(stderr, "No data read at line %d. Skipping...\n",numLines);
+			fprintf(stderr, "csm45: No usable data read at line %d. Skipping...\n",numLines);
 			continue;
 		}
 
-		strncat(line, "....", 4); /* Force padding in line to at least length 4 */
+		strncat(line, "...", 4); /* Force padding in line to at length 4 */
 
 		line[4] = '\0'; /* force end of string */
 
@@ -497,17 +553,21 @@ int main( int argc, char ** argv )
 
 	if ( !numLines )
 	{
-		fprintf(stderr, "No Lines Read\n" );
+		fprintf(stderr, "csm45: No Lines Read\n" );
 		exit(0);
 	}
 
-	dumpLines(data,0,numLines,0); /* data, start, end++, left to right pixel order) */
+	if ( strchr(directs,'n') ) 
+		dumpLines(data,0,numLines,0,0); /* data, start, end, left to right pixel order, top to bottom byte order ) */
 
-//	dumpLines(data,0,numLines,1); /* data, start, end++, right to left pixel order) */
+	if ( strchr( directs, 'h') && !(strchr( directs, 'v') ) )
+		dumpLines(data,0,numLines,1,0); /* data, start, end, right to left pixel order,top to bottom byte order ) */
 
-//	dumpLines(data,numLines-1,-1,0); /* data, start, end--, left to right pixel order) */
+	if ( !strchr( directs, 'h') && (strchr( directs, 'v') ) )
+		dumpLines(data,0,numLines,0,1); /* data, start, end, left to right pixel order, bottom to top byte order ) */
 
-//	dumpLines(data,numLines-1,-1,1); /* data, start, end--, right to left pixel order) */
+	if ( strchr( directs, 'h') && (strchr( directs, 'v') ) )
+		dumpLines(data,0,numLines,1,1); /* data, start, end, right to left pixel order, bottom to top byte order ) */
 
 	return 0;
 }
